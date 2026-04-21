@@ -448,6 +448,11 @@
             background: #dc2626;
             color: white;
         }
+        
+        .report-action-btn.download {
+            background: #10b981;
+            color: white;
+        }
 
         /* Login Screen */
         .login-container {
@@ -694,7 +699,7 @@
     <div class="sidebar" id="sidebar" style="display: none;">
         <div class="sidebar-header">
             <img src="FW Logo.png" alt="FW Logo" onerror="this.style.display='none'">
-            <h3>Sistema de Campo</h3>
+            <h3>Sistema de Campo 1.1</h3>
         </div>
         <div class="sidebar-menu">
             <div class="menu-item active" data-page="dashboard">
@@ -750,6 +755,7 @@
         <div class="modal-content" style="max-width: 90vw;">
             <h3>Foto do Relatório</h3>
             <img id="modalImage" style="width: 100%; border-radius: 8px; margin: 15px 0;">
+            <button class="btn btn-primary" id="downloadModalImageBtn" style="width: 100%; margin-bottom: 10px;"><i class="fas fa-download"></i> Baixar Foto</button>
             <button class="btn btn-primary" style="width: 100%;" onclick="closeModal('imageModal')">Fechar</button>
         </div>
     </div>
@@ -771,6 +777,33 @@
             let currentFilterDate = '';
             let isAdminViewAll = false;
             const PAGE_SIZE = 20;
+
+            // Função para garantir que a data seja armazenada corretamente sem fuso horário
+            function formatDateForStorage(dateString) {
+                if (!dateString) return '';
+                // Se já está no formato YYYY-MM-DD, retorna direto
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+                    return dateString;
+                }
+                // Caso contrário, converte para YYYY-MM-DD considerando a data local
+                const date = new Date(dateString);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
+            // Função para formatar data para exibição
+            function formatDate(dateString) {
+                if (!dateString) return '';
+                const [year, month, day] = dateString.split('-');
+                return `${day}/${month}/${year}`;
+            }
+
+            function formatDateTime(dateString) {
+                if (!dateString) return '';
+                return new Date(dateString).toLocaleString('pt-BR');
+            }
 
             // Função para retornar o ícone correto baseado no tipo de atividade
             function getActivityIcon(activityType) {
@@ -802,6 +835,31 @@
                 return colors[activityType] || '#8e44ad';
             }
 
+            // Função para download de imagem
+            window.downloadImage = function(imageUrl, filename = 'foto_relatorio.jpg') {
+                if (!imageUrl) {
+                    showNotification('Nenhuma imagem disponível para download', 'error');
+                    return;
+                }
+                fetch(imageUrl)
+                    .then(response => response.blob())
+                    .then(blob => {
+                        const link = document.createElement('a');
+                        const objectUrl = URL.createObjectURL(blob);
+                        link.href = objectUrl;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(objectUrl);
+                        showNotification('Download iniciado!', 'success');
+                    })
+                    .catch(error => {
+                        console.error('Erro ao baixar imagem:', error);
+                        showNotification('Erro ao baixar imagem', 'error');
+                    });
+            };
+
             // Initialize Supabase
             function getSupabaseClient() {
                 if (supabaseClient) return supabaseClient;
@@ -825,15 +883,6 @@
             // Show/hide loading
             function showLoading(show) {
                 document.getElementById('loading').style.display = show ? 'flex' : 'none';
-            }
-
-            // Format date
-            function formatDate(dateString) {
-                return new Date(dateString).toLocaleDateString('pt-BR');
-            }
-
-            function formatDateTime(dateString) {
-                return new Date(dateString).toLocaleString('pt-BR');
             }
 
             // Image to base64
@@ -867,7 +916,7 @@
                         user_id: currentUser.id,
                         user_name: currentUser.name,
                         user_email: currentUser.email,
-                        report_date: reportData.date,
+                        report_date: formatDateForStorage(reportData.date),
                         location: reportData.location,
                         activity_type: reportData.activityType,
                         description: reportData.description,
@@ -893,6 +942,7 @@
                 try {
                     const client = getSupabaseClient();
                     const reportToUpdate = {
+                        report_date: formatDateForStorage(reportData.date),
                         location: reportData.location,
                         activity_type: reportData.activityType,
                         description: reportData.description,
@@ -904,7 +954,7 @@
                         .update(reportToUpdate)
                         .eq('id', reportId);
                     if (error) throw error;
-                    showNotification('Relatório atualizado!', 'success');
+                    showNotification('Relatório atualizado com sucesso!', 'success');
                     return true;
                 } catch (error) {
                     showNotification('Erro ao atualizar: ' + error.message, 'error');
@@ -983,7 +1033,7 @@
                 return div.innerHTML;
             }
 
-            // Render reports list
+            // Render reports list with download button
             function renderReportsList() {
                 const container = document.getElementById('reportsListContainer');
                 if (!container) return;
@@ -1024,6 +1074,7 @@
                                 <button class="report-action-btn view" onclick="viewReportDetail('${report.id}')"><i class="fas fa-eye"></i> Ver</button>
                                 ${canEdit ? `<button class="report-action-btn edit" onclick="editReport('${report.id}')"><i class="fas fa-edit"></i> Editar</button>` : ''}
                                 ${canEdit ? `<button class="report-action-btn delete" onclick="deleteReportConfirm('${report.id}')"><i class="fas fa-trash"></i> Excluir</button>` : ''}
+                                ${hasImage ? `<button class="report-action-btn download" onclick="downloadImage('${report.image_url}', 'foto_${report.id}.jpg')"><i class="fas fa-download"></i> Baixar</button>` : ''}
                             </div>
                         </div>
                     `;
@@ -1045,14 +1096,14 @@
                     <div class="form-group"><label>Local</label><p>${escapeHtml(report.location)}</p></div>
                     <div class="form-group"><label>Tipo</label><p><span class="badge" style="background: ${badgeColor}20; border-color: ${badgeColor}; color: ${badgeColor}; padding: 8px 15px;">${iconHtml} ${escapeHtml(report.activity_type)}</span></p></div>
                     <div class="form-group"><label>Descrição</label><p style="white-space:pre-wrap;">${escapeHtml(report.description)}</p></div>
-                    ${report.image_url ? `<div class="form-group"><label>Foto</label><div style="cursor:pointer;" onclick="viewFullImage('${report.image_url}')"><img src="${report.image_url}" style="width:100%; border-radius:8px; max-height:200px; object-fit:cover;"></div></div>` : ''}
+                    ${report.image_url ? `<div class="form-group"><label>Foto</label><div style="cursor:pointer;" onclick="viewFullImage('${report.image_url}')"><img src="${report.image_url}" style="width:100%; border-radius:8px; max-height:200px; object-fit:cover;"></div><button class="btn btn-primary" style="margin-top:10px; width:100%;" onclick="downloadImage('${report.image_url}', 'foto_${report.id}.jpg')"><i class="fas fa-download"></i> Baixar Foto</button></div>` : ''}
                     <div class="form-group"><label>Cadastrado por</label><p>${escapeHtml(report.user_name)} (${report.user_email})</p></div>
                     <div class="form-group"><label>Cadastrado em</label><p>${formatDateTime(report.created_at)}</p></div>
                 `;
                 document.getElementById('detailModal').style.display = 'flex';
             };
 
-            // Edit report
+            // Edit report - COM CAMPO DE DATA CORRIGIDO
             window.editReport = function(reportId) {
                 const report = reports.find(r => r.id == reportId);
                 if (!report) return;
@@ -1060,6 +1111,10 @@
                 const modalBody = document.getElementById('editModalBody');
                 modalBody.innerHTML = `
                     <form id="editReportForm">
+                        <div class="form-group">
+                            <label>Data da Atividade</label>
+                            <input type="date" id="editReportDate" class="form-control" value="${report.report_date}" required>
+                        </div>
                         <div class="form-group">
                             <label>Local/Empresa</label>
                             <select id="editLocation" class="form-control" required>
@@ -1142,18 +1197,19 @@
             };
 
             window.submitEdit = async function(reportId) {
+                const date = document.getElementById('editReportDate').value;
                 const location = document.getElementById('editLocation').value;
                 const activityType = document.getElementById('editType').value;
                 const description = document.getElementById('editDescription').value.trim();
                 const imageBase64 = document.getElementById('editImageBase64').value || null;
 
-                if (!location || !activityType || !description) {
+                if (!date || !location || !activityType || !description) {
                     showNotification('Preencha todos os campos', 'error');
                     return;
                 }
 
                 showLoading(true);
-                const success = await updateReport(reportId, { location, activityType, description, imageBase64 });
+                const success = await updateReport(reportId, { date, location, activityType, description, imageBase64 });
                 showLoading(false);
 
                 if (success) {
@@ -1181,6 +1237,10 @@
             window.viewFullImage = function(imageUrl) {
                 document.getElementById('modalImage').src = imageUrl;
                 document.getElementById('imageModal').style.display = 'flex';
+                const downloadBtn = document.getElementById('downloadModalImageBtn');
+                if (downloadBtn) {
+                    downloadBtn.onclick = () => downloadImage(imageUrl, 'foto_relatorio.jpg');
+                }
             };
 
             window.removeImage = function() {
@@ -1196,7 +1256,7 @@
             // Update stats
             async function updateStats() {
                 const client = getSupabaseClient();
-                let query = client.from('Relatório de atividades de campo').select('activity_type');
+                let query = client.from('Relatório de atividades de campo').select('activity_type, report_date');
                 if (currentUser.role !== 'admin') {
                     query = query.eq('user_id', currentUser.id);
                 }
